@@ -1,0 +1,23 @@
+# Vercel deployment configuration
+{
+  "name": "lifestyle-habit-tracker",
+  "version": 2,
+  "builds": [
+    {
+      "src": "package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "web-build"
+      }
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
+    }
+  ],
+  "buildCommand": "expo export --platform web",
+  "outputDirectory": "dist",
+  "installCommand": "npm install"
+}

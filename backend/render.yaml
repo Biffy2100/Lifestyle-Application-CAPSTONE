@@ -1,0 +1,16 @@
+# Render Deployment Configuration
+# This file is used by Render to deploy your backend
+
+# Build command
+build = "npm install"
+
+# Start command 
+start = "npm start"
+
+# Environment
+NODE_ENV = production
+
+# Required environment variables to set in Render dashboard:
+# - MONGODB_URI (MongoDB connection string)
+# - JWT_SECRET (Strong random string for JWT signing)
+# - FRONTEND_URL (Your frontend deployment URL)

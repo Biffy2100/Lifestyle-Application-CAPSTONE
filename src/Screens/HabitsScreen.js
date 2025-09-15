@@ -10,24 +10,28 @@ import {
   Modal,
   Alert,
   Dimensions,
+  ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Animatable from 'react-native-animatable';
+import { habitsAPI } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 
 const { width } = Dimensions.get('window');
 
 export default function HabitsScreen() {
+  const { user } = useAuth();
   const [habits, setHabits] = useState([]);
   const [isAddModalVisible, setIsAddModalVisible] = useState(false);
   const [newHabitText, setNewHabitText] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('Health');
   const [selectedIcon, setSelectedIcon] = useState('fitness');
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const categories = ['Health', 'Productivity', 'Learning', 'Social', 'Personal'];
   const icons = ['fitness', 'book', 'water', 'bed', 'walk', 'nutrition', 'phone', 'time'];
-
-  const STORAGE_KEY = '@habits_data';
 
   useEffect(() => {
     loadHabits();
@@ -35,64 +39,87 @@ export default function HabitsScreen() {
 
   const loadHabits = async () => {
     try {
-      const savedHabits = await AsyncStorage.getItem(STORAGE_KEY);
-      if (savedHabits) {
-        setHabits(JSON.parse(savedHabits));
+      setIsLoading(true);
+      const result = await habitsAPI.getHabits();
+      if (result.success) {
+        setHabits(result.data.habits || []);
+      } else {
+        Alert.alert('Error', result.message || 'Failed to load habits');
+        // Fallback to empty array
+        setHabits([]);
       }
     } catch (error) {
       console.error('Error loading habits:', error);
+      Alert.alert('Error', 'Failed to load habits. Please try again.');
+      setHabits([]);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const saveHabits = async (habitsToSave) => {
-    try {
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(habitsToSave));
-    } catch (error) {
-      console.error('Error saving habits:', error);
-    }
+  const onRefresh = async () => {
+    setIsRefreshing(true);
+    await loadHabits();
+    setIsRefreshing(false);
   };
 
-  const addHabit = () => {
+  const addHabit = async () => {
     if (newHabitText.trim() === '') {
       Alert.alert('Invalid Input', 'Please enter a habit name');
       return;
     }
 
-    const newHabit = {
-      id: Date.now().toString(),
-      text: newHabitText.trim(),
-      category: selectedCategory,
-      icon: selectedIcon,
-      completed: false,
-      streak: 0,
-      createdAt: new Date().toISOString(),
-    };
+    try {
+      const newHabitData = {
+        text: newHabitText.trim(),
+        category: selectedCategory,
+        icon: selectedIcon,
+      };
 
-    const updatedHabits = [...habits, newHabit];
-    setHabits(updatedHabits);
-    saveHabits(updatedHabits);
-
-    // Reset form
-    setNewHabitText('');
+      const result = await habitsAPI.createHabit(newHabitData);
+      
+      if (result.success) {
+        // Add the new habit to the local state
+        setHabits(prevHabits => [result.data.habit, ...prevHabits]);
+        
+        // Reset form
+        setNewHabitText('');
+        setSelectedCategory('Health');
+        setSelectedIcon('fitness');
+        setIsAddModalVisible(false);
+        
+        Alert.alert('Success', 'Habit created successfully!');
+      } else {
+        Alert.alert('Error', result.message || 'Failed to create habit');
+      }
+    } catch (error) {
+      console.error('Error creating habit:', error);
+      Alert.alert('Error', 'Failed to create habit. Please try again.');
+    }
+  };
     setSelectedCategory('Health');
     setSelectedIcon('fitness');
     setIsAddModalVisible(false);
   };
 
-  const toggleHabit = (habitId) => {
-    const updatedHabits = habits.map(habit => {
-      if (habit.id === habitId) {
-        const newCompleted = !habit.completed;
-        return {
-          ...habit,
-          completed: newCompleted,
-          streak: newCompleted ? habit.streak + 1 : Math.max(0, habit.streak - 1)
-        };
+  const toggleHabit = async (habitId) => {
+    try {
+      const result = await habitsAPI.toggleHabitCompletion(habitId);
+      
+      if (result.success) {
+        // Update the local state with the updated habit from API
+        setHabits(prevHabits => 
+          prevHabits.map(habit => 
+            habit._id === habitId ? result.data.habit : habit
+          )
+        );
+      } else {
+        Alert.alert('Error', result.message || 'Failed to update habit');
       }
-      return habit;
-    });
-    setHabits(updatedHabits);
-    saveHabits(updatedHabits);
+    } catch (error) {
+      console.error('Error toggling habit:', error);
+      Alert.alert('Error', 'Failed to update habit. Please try again.');
+    }
   };
 
   const deleteHabit = (habitId) => {
@@ -104,12 +131,23 @@ export default function HabitsScreen() {
         {
           text: 'Delete',
           style: 'destructive',
-          onPress: () => {
-            const updatedHabits = habits.filter(habit => habit.id !== habitId);
-            setHabits(updatedHabits);
-            saveHabits(updatedHabits);
-          },
-        },
+          onPress: async () => {
+            try {
+              const result = await habitsAPI.deleteHabit(habitId);
+              
+              if (result.success) {
+                // Remove the habit from local state
+                setHabits(prevHabits => prevHabits.filter(habit => habit._id !== habitId));
+                Alert.alert('Success', 'Habit deleted successfully');
+              } else {
+                Alert.alert('Error', result.message || 'Failed to delete habit');
+              }
+            } catch (error) {
+              console.error('Error deleting habit:', error);
+              Alert.alert('Error', 'Failed to delete habit. Please try again.');
+            }
+          }
+        }
       ]
     );
   };
@@ -141,7 +179,7 @@ export default function HabitsScreen() {
           </Text>
           <View style={styles.habitMeta}>
             <Text style={styles.categoryText}>{item.category}</Text>
-            <Text style={styles.streakText}>🔥 {item.streak} day streak</Text>
+            <Text style={styles.streakText}>🔥 {item.streak || 0} day streak</Text>
           </View>
         </View>
       </View>
@@ -149,7 +187,7 @@ export default function HabitsScreen() {
       <View style={styles.habitActions}>
         <TouchableOpacity
           style={[styles.checkButton, item.completed && styles.checkButtonCompleted]}
-          onPress={() => toggleHabit(item.id)}
+          onPress={() => toggleHabit(item._id)}
         >
           <Ionicons
             name={item.completed ? "checkmark" : "checkmark"}
@@ -159,7 +197,7 @@ export default function HabitsScreen() {
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.deleteButton}
-          onPress={() => deleteHabit(item.id)}
+          onPress={() => deleteHabit(item._id)}
         >
           <Ionicons name="trash-outline" size={18} color="#e74c3c" />
         </TouchableOpacity>
@@ -167,90 +205,92 @@ export default function HabitsScreen() {
     </Animatable.View>
   );
 
-  const AddHabitModal = () => (
-    <Modal visible={isAddModalVisible} animationType="slide" transparent>
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalContent}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Add New Habit</Text>
-            <TouchableOpacity onPress={() => setIsAddModalVisible(false)}>
-              <Ionicons name="close" size={24} color="#95a5a6" />
-            </TouchableOpacity>
-          </View>
+  const AddHabitModal = () => {
+    return (
+      <Modal visible={isAddModalVisible} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Add New Habit</Text>
+              <TouchableOpacity onPress={() => setIsAddModalVisible(false)}>
+                <Ionicons name="close" size={24} color="#95a5a6" />
+              </TouchableOpacity>
+            </View>
 
-          <TextInput
-            style={styles.modalInput}
-            placeholder="Enter habit name..."
-            value={newHabitText}
-            onChangeText={setNewHabitText}
-            maxLength={50}
-          />
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Enter habit name..."
+              value={newHabitText}
+              onChangeText={setNewHabitText}
+              maxLength={50}
+            />
 
-          <Text style={styles.sectionLabel}>Category</Text>
-          <View style={styles.categoryContainer}>
-            {categories.map((category) => (
-              <TouchableOpacity
-                key={category}
-                style={[
-                  styles.categoryButton,
-                  selectedCategory === category && {
-                    backgroundColor: getCategoryColor(category),
-                  }
-                ]}
-                onPress={() => setSelectedCategory(category)}
-              >
-                <Text
+            <Text style={styles.sectionLabel}>Category</Text>
+            <View style={styles.categoryContainer}>
+              {categories.map((category) => (
+                <TouchableOpacity
+                  key={category}
                   style={[
-                    styles.categoryButtonText,
-                    selectedCategory === category && styles.selectedCategoryText
+                    styles.categoryButton,
+                    selectedCategory === category && {
+                      backgroundColor: getCategoryColor(category),
+                    }
                   ]}
+                  onPress={() => setSelectedCategory(category)}
                 >
-                  {category}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+                  <Text
+                    style={[
+                      styles.categoryButtonText,
+                      selectedCategory === category && styles.selectedCategoryText
+                    ]}
+                  >
+                    {category}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
 
-          <Text style={styles.sectionLabel}>Icon</Text>
-          <View style={styles.iconContainer}>
-            {icons.map((icon) => (
+            <Text style={styles.sectionLabel}>Icon</Text>
+            <View style={styles.iconContainer}>
+              {icons.map((icon) => (
+                <TouchableOpacity
+                  key={icon}
+                  style={[
+                    styles.iconButton,
+                    selectedIcon === icon && {
+                      backgroundColor: getCategoryColor(selectedCategory),
+                    }
+                  ]}
+                  onPress={() => setSelectedIcon(icon)}
+                >
+                  <Ionicons
+                    name={icon}
+                    size={20}
+                    color={selectedIcon === icon ? 'white' : '#95a5a6'}
+                  />
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <View style={styles.modalActions}>
               <TouchableOpacity
-                key={icon}
-                style={[
-                  styles.iconButton,
-                  selectedIcon === icon && {
-                    backgroundColor: getCategoryColor(selectedCategory),
-                  }
-                ]}
-                onPress={() => setSelectedIcon(icon)}
+                style={styles.cancelButton}
+                onPress={() => setIsAddModalVisible(false)}
               >
-                <Ionicons
-                  name={icon}
-                  size={20}
-                  color={selectedIcon === icon ? 'white' : '#95a5a6'}
-                />
+                <Text style={styles.cancelButtonText}>Cancel</Text>
               </TouchableOpacity>
-            ))}
-          </View>
-
-          <View style={styles.modalActions}>
-            <TouchableOpacity
-              style={styles.cancelButton}
-              onPress={() => setIsAddModalVisible(false)}
-            >
-              <Text style={styles.cancelButtonText}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.addButton, { backgroundColor: getCategoryColor(selectedCategory) }]}
-              onPress={addHabit}
-            >
-              <Text style={styles.addButtonText}>Add Habit</Text>
-            </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.addButton, { backgroundColor: getCategoryColor(selectedCategory) }]}
+                onPress={addHabit}
+              >
+                <Text style={styles.addButtonText}>Add Habit</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
-      </View>
-    </Modal>
-  );
+      </Modal>
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -261,7 +301,12 @@ export default function HabitsScreen() {
         </Text>
       </View>
 
-      {habits.length === 0 ? (
+      {isLoading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#3498db" />
+          <Text style={styles.loadingText}>Loading your habits...</Text>
+        </View>
+      ) : habits.length === 0 ? (
         <View style={styles.emptyState}>
           <Ionicons name="checkmark-circle-outline" size={80} color="#bdc3c7" />
           <Text style={styles.emptyStateTitle}>No habits yet!</Text>
@@ -273,9 +318,17 @@ export default function HabitsScreen() {
         <FlatList
           data={habits}
           renderItem={renderHabitItem}
-          keyExtractor={item => item.id}
+          keyExtractor={item => item._id || item.id}
           contentContainerStyle={styles.listContainer}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={onRefresh}
+              colors={['#3498db']}
+              tintColor="#3498db"
+            />
+          }
         />
       )}
 
@@ -310,6 +363,17 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#7f8c8d',
     marginTop: 5,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 50,
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#7f8c8d',
   },
   listContainer: {
     paddingHorizontal: 20,

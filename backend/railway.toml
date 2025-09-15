@@ -1,0 +1,15 @@
+# Railway Deployment Configuration
+# This file is used by Railway to deploy your backend
+
+[build]
+builder = "nixpacks"
+
+[deploy]
+healthcheckPath = "/health"
+restartPolicyType = "on-failure"
+
+# Environment variables to set in Railway dashboard:
+# NODE_ENV=production
+# MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/habit-tracker
+# JWT_SECRET=your_super_secret_jwt_key_here
+# FRONTEND_URL=https://your-frontend-domain.vercel.app
