@@ -1,10 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
-import { StyleSheet, View, Text } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { StyleSheet, View, Text, ActivityIndicator } from 'react-native';
+
+// Context
+import { AuthProvider, useAuth } from './src/context/AuthContext';
 
 // Import screens
 import LoginScreen from './src/Screens/LoginScreen';
@@ -16,46 +18,16 @@ import SettingsScreen from './src/Screens/SettingScreen';
 
 const Tab = createBottomTabNavigator();
 
-export default function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    checkAuthStatus();
-  }, []);
-
-  const checkAuthStatus = async () => {
-    try {
-      const authStatus = await AsyncStorage.getItem('@user_authenticated');
-      if (authStatus === 'true') {
-        setIsAuthenticated(true);
-      }
-    } catch (error) {
-      console.error('Error checking auth status:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleLogin = (authenticated) => {
-    setIsAuthenticated(authenticated);
-  };
-
-  const handleLogout = async () => {
-    try {
-      await AsyncStorage.removeItem('@user_authenticated');
-      await AsyncStorage.removeItem('@user_login_time');
-      setIsAuthenticated(false);
-    } catch (error) {
-      console.error('Error during logout:', error);
-    }
-  };
+// Main app component inside auth provider
+function MainApp() {
+  const { isAuthenticated, isLoading, logout } = useAuth();
 
   // Loading screen
   if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
         <StatusBar style="dark" backgroundColor="#f8f9fa" />
+        <ActivityIndicator size="large" color="#3498db" />
         <Text style={styles.loadingText}>Loading...</Text>
       </View>
     );
@@ -63,7 +35,7 @@ export default function App() {
 
   // Show login screen if not authenticated
   if (!isAuthenticated) {
-    return <LoginScreen onLogin={handleLogin} />;
+    return <LoginScreen />;
   }
 
   // Main app with tabs if authenticated
@@ -107,10 +79,19 @@ export default function App() {
         <Tab.Screen name="Profile" component={ProfileScreen} />
         <Tab.Screen 
           name="Settings" 
-          children={() => <SettingsScreen onLogout={handleLogout} />} 
+          children={() => <SettingsScreen onLogout={logout} />} 
         />
       </Tab.Navigator>
     </NavigationContainer>
+  );
+}
+
+// Root app component with providers
+export default function App() {
+  return (
+    <AuthProvider>
+      <MainApp />
+    </AuthProvider>
   );
 }
 
@@ -124,6 +105,7 @@ const styles = StyleSheet.create({
   loadingText: {
     fontSize: 18,
     color: '#2c3e50',
+    marginTop: 16,
   },
   tabBar: {
     backgroundColor: '#ffffff',
