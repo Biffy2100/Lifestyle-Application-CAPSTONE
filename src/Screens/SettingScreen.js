@@ -15,7 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Animatable from 'react-native-animatable';
 
-export default function SettingsScreen() {
+export default function SettingsScreen({ onLogout }) {
   const [settings, setSettings] = useState({
     notifications: true,
     dailyReminder: true,
@@ -117,6 +117,25 @@ export default function SettingsScreen() {
               Alert.alert('Success', 'All data has been cleared');
             } catch (error) {
               Alert.alert('Error', 'Failed to clear data');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleLogout = () => {
+    Alert.alert(
+      'Sign Out',
+      'Are you sure you want to sign out?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Sign Out',
+          style: 'destructive',
+          onPress: () => {
+            if (onLogout) {
+              onLogout();
             }
           },
         },
@@ -302,6 +321,17 @@ export default function SettingsScreen() {
             title="Clear All Data"
             subtitle="Permanently delete all app data"
             onPress={clearAllData}
+            color="#e74c3c"
+          />
+        </SettingSection>
+
+        {/* Account */}
+        <SettingSection title="Account">
+          <SettingItem
+            icon="log-out-outline"
+            title="Sign Out"
+            subtitle="Sign out of your account"
+            onPress={handleLogout}
             color="#e74c3c"
           />
         </SettingSection>
